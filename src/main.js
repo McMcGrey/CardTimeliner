@@ -1,5 +1,13 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
+import VNetworkGraph from 'v-network-graph'
+import 'v-network-graph/lib/style.css'
 
-createApp(App).mount('#app')
+const app = createApp(App)
+const pinia = createPinia()
+
+app.use(pinia)
+app.use(VNetworkGraph)
+app.mount('#app')
