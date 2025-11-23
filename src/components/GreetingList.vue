@@ -25,7 +25,7 @@
       </div>
 
       <div class="filter-group">
-        <label>AU Status:</label>
+        <label>Fan-fiction Status:</label>
         <div class="filter-buttons">
           <button
             :class="{ active: filters.au === 'all' }"
@@ -37,13 +37,13 @@
             :class="{ active: filters.au === 'au' }"
             @click="filters.au = 'au'"
           >
-            AU Only
+            Fan-fiction Only
           </button>
           <button
             :class="{ active: filters.au === 'non-au' }"
             @click="filters.au = 'non-au'"
           >
-            Non-AU
+            Non-Fan-fiction
           </button>
         </div>
       </div>
@@ -53,6 +53,16 @@
         <SearchableSelect
           v-model="filters.characters"
           placeholder="Filter by characters..."
+          :options="store.allCharacters"
+          :allow-create="false"
+        />
+      </div>
+
+      <div class="filter-group filter-group-wide">
+        <label>Exclude Characters:</label>
+        <SearchableSelect
+          v-model="filters.excludeCharacters"
+          placeholder="Exclude greetings with these characters..."
           :options="store.allCharacters"
           :allow-create="false"
         />
@@ -93,7 +103,7 @@
           <h3>{{ greeting.name }}</h3>
           <div class="badges">
             <span v-if="greeting.canon" class="canon-badge">Canon</span>
-            <span v-if="greeting.au" class="au-badge">AU</span>
+            <span v-if="greeting.au" class="au-badge">Fan-fiction</span>
           </div>
         </div>
 
@@ -171,6 +181,7 @@ const filters = ref({
   canon: 'all',
   au: 'all',
   characters: [],
+  excludeCharacters: [],
   card: ''
 })
 
@@ -189,10 +200,17 @@ const filteredGreetings = computed(() => {
     result = result.filter(g => !g.au)
   }
 
-  // Filter by characters (OR logic - greeting must have at least one of the selected characters)
+  // Filter by characters (AND logic - greeting must have all selected characters)
   if (filters.value.characters.length > 0) {
     result = result.filter(g =>
-      g.characters && g.characters.some(charId => filters.value.characters.includes(charId))
+      g.characters && filters.value.characters.every(selectedCharId => g.characters.includes(selectedCharId))
+    )
+  }
+
+  // Exclude characters (greeting must NOT have any of the excluded characters)
+  if (filters.value.excludeCharacters.length > 0) {
+    result = result.filter(g =>
+      !g.characters || !g.characters.some(charId => filters.value.excludeCharacters.includes(charId))
     )
   }
 
@@ -209,6 +227,7 @@ function clearFilters() {
     canon: 'all',
     au: 'all',
     characters: [],
+    excludeCharacters: [],
     card: ''
   }
 }

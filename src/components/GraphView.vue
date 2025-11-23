@@ -25,34 +25,62 @@
       >
         <template #override-node="{ nodeId, scale, config, ...slotProps }">
           <g>
-            <!-- Draw split circle for Canon + AU -->
             <template v-if="getNodeFlags(nodeId).canon && getNodeFlags(nodeId).au">
               <!-- Left half - Canon (green) -->
-              <path
-                :d="getLeftHalfCircle(config.radius * scale)"
+              <rect
+                :x="-getNodeWidth(nodeId) / 2 * scale"
+                :y="-getNodeHeight(nodeId) / 2 * scale"
+                :width="getNodeWidth(nodeId) / 2 * scale"
+                :height="getNodeHeight(nodeId) * scale"
                 fill="#42b883"
                 :stroke="'#359268'"
                 :stroke-width="2 * scale"
+                rx="4"
                 v-bind="slotProps"
               />
               <!-- Right half - AU (purple) -->
-              <path
-                :d="getRightHalfCircle(config.radius * scale)"
+              <rect
+                :x="0"
+                :y="-getNodeHeight(nodeId) / 2 * scale"
+                :width="getNodeWidth(nodeId) / 2 * scale"
+                :height="getNodeHeight(nodeId) * scale"
                 fill="#9b59b6"
                 :stroke="'#7d3c98'"
                 :stroke-width="2 * scale"
+                rx="4"
                 v-bind="slotProps"
               />
             </template>
-            <!-- Draw single color circle for others -->
-            <circle
+            <!-- Draw single color rectangle for others -->
+            <rect
               v-else
-              :r="config.radius * scale"
+              :x="-getNodeWidth(nodeId) / 2 * scale"
+              :y="-getNodeHeight(nodeId) / 2 * scale"
+              :width="getNodeWidth(nodeId) * scale"
+              :height="getNodeHeight(nodeId) * scale"
               :fill="getNodeColor(nodeId)"
               :stroke="getNodeStroke(nodeId)"
               :stroke-width="2 * scale"
+              rx="4"
               v-bind="slotProps"
             />
+            <!-- Node text inside the rectangle (multi-line support) -->
+            <text
+              text-anchor="middle"
+              :font-size="12 * scale"
+              fill="white"
+              font-weight="600"
+              v-bind="slotProps"
+            >
+              <tspan
+                v-for="(line, index) in getWrappedLines(nodeId)"
+                :key="index"
+                x="0"
+                :dy="index === 0 ? (-getWrappedLines(nodeId).length * 9 + 12) * scale : 16 * scale"
+              >
+                {{ line }}
+              </tspan>
+            </text>
           </g>
         </template>
       </v-network-graph>
@@ -62,19 +90,19 @@
         <h4>Legend</h4>
         <div class="legend-items">
           <div class="legend-item">
-            <div class="legend-circle canon-color"></div>
+            <div class="legend-box canon-color"></div>
             <span>Canon</span>
           </div>
           <div class="legend-item">
-            <div class="legend-circle au-color"></div>
-            <span>AU</span>
+            <div class="legend-box au-color"></div>
+            <span>Fan-fiction</span>
           </div>
           <div class="legend-item">
-            <div class="legend-circle split-color"></div>
-            <span>Canon + AU</span>
+            <div class="legend-box split-color"></div>
+            <span>Canon + Fan-fiction</span>
           </div>
           <div class="legend-item">
-            <div class="legend-circle regular-color"></div>
+            <div class="legend-box regular-color"></div>
             <span>Regular</span>
           </div>
           <div class="legend-item">
@@ -94,7 +122,7 @@
           <h4>{{ tooltip.greeting.name }}</h4>
           <div class="tooltip-badges">
             <span v-if="tooltip.greeting.canon" class="badge canon">Canon</span>
-            <span v-if="tooltip.greeting.au" class="badge au">AU</span>
+            <span v-if="tooltip.greeting.au" class="badge au">Fan-fiction</span>
           </div>
           <div v-if="tooltip.greeting.card" class="tooltip-section">
             <strong>Card:</strong> {{ getCardName(tooltip.greeting.card) }}
@@ -139,17 +167,40 @@ const graphData = computed(() => {
 
   // Build nodes
   store.allGreetings.forEach(greeting => {
-    const badges = []
-    if (greeting.canon) badges.push('C')
-    if (greeting.au) badges.push('AU')
-
     let color = '#4a90e2'
     if (greeting.canon) color = '#42b883'
     else if (greeting.au) color = '#9b59b6'
 
+    // Calculate dynamic width and height for this node
+    const name = greeting.name
+    const estimatedWidth = Math.max(100, Math.min(300, (name.length * 7) + 40))
+
+    // Calculate lines and height
+    const maxCharsPerLine = 35
+    let lines = [name]
+    if (name.length > maxCharsPerLine) {
+      const words = name.split(' ')
+      const tempLines = []
+      let currentLine = ''
+      words.forEach(word => {
+        const testLine = currentLine ? `${currentLine} ${word}` : word
+        if (testLine.length <= maxCharsPerLine) {
+          currentLine = testLine
+        } else {
+          if (currentLine) tempLines.push(currentLine)
+          currentLine = word
+        }
+      })
+      if (currentLine) tempLines.push(currentLine)
+      lines = tempLines.slice(0, 2)
+    }
+    const nodeHeight = lines.length > 1 ? 40 + ((lines.length - 1) * 18) : 40
+
     nodes[greeting.id] = {
-      name: badges.length > 0 ? `${greeting.name} [${badges.join(', ')}]` : greeting.name,
-      color: color
+      name: greeting.name,
+      color: color,
+      width: estimatedWidth,
+      height: nodeHeight
     }
   })
 
@@ -199,18 +250,22 @@ const graphData = computed(() => {
     }
   })
 
-  // Position nodes
-  const horizontalSpacing = 250
-  const verticalSpacing = 100
+  // Position nodes with dynamic spacing
+  const horizontalSpacing = 450 // Increased to accommodate wider nodes
+  const verticalSpacing = 80 // Space between nodes vertically
 
   Object.keys(levels).forEach(level => {
     const nodesInLevel = levels[level]
     const levelNum = parseInt(level)
 
+    // Calculate total height needed for this level
+    const totalHeight = nodesInLevel.length * verticalSpacing
+    const startY = -totalHeight / 2
+
     nodesInLevel.forEach((nodeId, index) => {
       layouts.nodes[nodeId] = {
         x: levelNum * horizontalSpacing,
-        y: index * verticalSpacing - (nodesInLevel.length - 1) * verticalSpacing / 2
+        y: startY + (index * verticalSpacing) + verticalSpacing / 2
       }
     })
   })
@@ -227,18 +282,18 @@ const configs = vNG.defineConfigs({
   node: {
     selectable: true,
     normal: {
-      type: 'circle',
-      radius: 16,
+      type: 'rect',
+      width: node => node.width || 200,
+      height: node => node.height || 40,
+      borderRadius: 4,
       color: node => node.color || '#4a90e2'
     },
     hover: {
-      radius: 18
+      width: node => (node.width || 200) + 10,
+      height: node => (node.height || 40) + 5
     },
     label: {
-      visible: true,
-      fontSize: 11,
-      direction: 'south',
-      color: '#333'
+      visible: false
     }
   },
   edge: {
@@ -246,13 +301,15 @@ const configs = vNG.defineConfigs({
       color: '#999',
       width: 2
     },
+    margin: 4,
     marker: {
       target: {
         type: 'arrow',
         width: 8,
         height: 8
       }
-    }
+    },
+    gap: 5
   }
 })
 
@@ -285,6 +342,60 @@ function getCardName(id) {
   return card ? card.name : 'Unknown'
 }
 
+function getNodeName(nodeId) {
+  const greeting = store.allGreetings.find(g => g.id === nodeId)
+  return greeting?.name || 'Unknown'
+}
+
+function getNodeWidth(nodeId) {
+  const name = getNodeName(nodeId)
+  // Estimate width: ~7 pixels per character + 20px padding on each side
+  const estimatedWidth = (name.length * 7) + 40
+  // Minimum width of 100px, maximum of 300px (reduced for wrapping)
+  return Math.max(100, Math.min(300, estimatedWidth))
+}
+
+function getNodeHeight(nodeId) {
+  const lines = getWrappedLines(nodeId)
+  // 40px base height + 18px for each additional line
+  return lines.length > 1 ? 40 + ((lines.length - 1) * 18) : 40
+}
+
+function getWrappedLines(nodeId) {
+  const name = getNodeName(nodeId)
+  const maxCharsPerLine = 35 // Approximate characters that fit in 300px
+
+  if (name.length <= maxCharsPerLine) {
+    return [name]
+  }
+
+  const words = name.split(' ')
+  const lines = []
+  let currentLine = ''
+
+  words.forEach(word => {
+    const testLine = currentLine ? `${currentLine} ${word}` : word
+    if (testLine.length <= maxCharsPerLine) {
+      currentLine = testLine
+    } else {
+      if (currentLine) {
+        lines.push(currentLine)
+        currentLine = word
+      } else {
+        // Word itself is longer than max, force it
+        lines.push(word)
+      }
+    }
+  })
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  // Limit to 2 lines
+  return lines.slice(0, 2)
+}
+
 function getNodeFlags(nodeId) {
   const greeting = store.allGreetings.find(g => g.id === nodeId)
   return {
@@ -305,16 +416,6 @@ function getNodeStroke(nodeId) {
   if (flags.canon) return '#359268'
   if (flags.au) return '#7d3c98'
   return '#357abd'
-}
-
-function getLeftHalfCircle(radius) {
-  // SVG path for left half of circle
-  return `M 0,${-radius} A ${radius},${radius} 0 0,1 0,${radius} L 0,0 Z`
-}
-
-function getRightHalfCircle(radius) {
-  // SVG path for right half of circle
-  return `M 0,${-radius} A ${radius},${radius} 0 0,0 0,${radius} L 0,0 Z`
 }
 
 async function downloadGraph() {
@@ -522,10 +623,10 @@ async function downloadGraph() {
   color: #555;
 }
 
-.legend-circle {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+.legend-box {
+  width: 40px;
+  height: 20px;
+  border-radius: 3px;
   border: 2px solid #333;
 }
 

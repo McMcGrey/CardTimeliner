@@ -34,7 +34,7 @@
         <div class="form-group checkbox">
           <label>
             <input v-model="form.au" type="checkbox" />
-            AU (Alternative Universe)
+            Fan-fiction
           </label>
         </div>
       </div>

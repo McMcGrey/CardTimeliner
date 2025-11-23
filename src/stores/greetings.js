@@ -1,11 +1,64 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+
+const STORAGE_KEY = 'card-timeliner-data'
 
 export const useGreetingsStore = defineStore('greetings', () => {
   // State
   const greetings = ref([])
   const characters = ref([])
   const cards = ref([])
+
+  // Load data from localStorage on initialization
+  function loadFromLocalStorage() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        const data = JSON.parse(stored)
+
+        // Load with backward compatibility
+        if (data.characters) {
+          characters.value = data.characters
+        }
+
+        if (data.cards) {
+          cards.value = data.cards
+        }
+
+        if (data.greetings) {
+          greetings.value = data.greetings.map(g => ({
+            ...g,
+            predecessors: g.predecessors || [],
+            successors: g.successors || []
+          }))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load from localStorage:', error)
+    }
+  }
+
+  // Save data to localStorage
+  function saveToLocalStorage() {
+    try {
+      const data = {
+        characters: characters.value,
+        cards: cards.value,
+        greetings: greetings.value
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    } catch (error) {
+      console.error('Failed to save to localStorage:', error)
+    }
+  }
+
+  // Watch for changes and auto-save
+  watch([greetings, characters, cards], () => {
+    saveToLocalStorage()
+  }, { deep: true })
+
+  // Initialize from localStorage
+  loadFromLocalStorage()
 
   // Getters
   const allGreetings = computed(() => greetings.value)
@@ -69,6 +122,28 @@ export const useGreetingsStore = defineStore('greetings', () => {
     })
   }
 
+  // Helper function to insert greeting between linked greetings
+  function insertBetweenLinks(greetingId, predecessors, successors) {
+    // For each predecessor, check if it links to any of our successors
+    predecessors.forEach(predecessorId => {
+      const predecessor = greetings.value.find(g => g.id === predecessorId)
+      if (predecessor) {
+        // Remove any direct links from predecessor to our successors
+        successors.forEach(successorId => {
+          if (predecessor.successors.includes(successorId)) {
+            predecessor.successors = predecessor.successors.filter(id => id !== successorId)
+
+            // Also remove the reverse link
+            const successor = greetings.value.find(g => g.id === successorId)
+            if (successor) {
+              successor.predecessors = successor.predecessors.filter(id => id !== predecessorId)
+            }
+          }
+        })
+      }
+    })
+  }
+
   // Actions
   function addGreeting(greeting) {
     const newGreeting = {
@@ -92,6 +167,9 @@ export const useGreetingsStore = defineStore('greetings', () => {
       [],
       newGreeting.predecessors
     )
+
+    // Insert this greeting between any linked predecessors and successors
+    insertBetweenLinks(newGreeting.id, newGreeting.predecessors, newGreeting.successors)
 
     return newGreeting
   }
