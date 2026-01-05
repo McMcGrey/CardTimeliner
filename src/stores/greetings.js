@@ -3,11 +3,41 @@ import { ref, computed, watch } from 'vue'
 
 const STORAGE_KEY = 'card-timeliner-data'
 
+// UUID generator with fallback for environments without crypto.randomUUID
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  // Fallback UUID v4 implementation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
+// Generate a unique UUID - will be used with idExists check inside the store
+function generateUniqueUUID(checkExists) {
+  let id = generateUUID()
+  // Keep generating until we get a unique ID, rechecking ALL items each time
+  while (checkExists(id)) {
+    id = generateUUID()
+  }
+  return id
+}
+
 export const useGreetingsStore = defineStore('greetings', () => {
   // State
   const greetings = ref([])
   const characters = ref([])
   const cards = ref([])
+
+  // Helper to check if an ID exists in any collection
+  function idExists(id) {
+    return greetings.value.some(item => item.id === id) ||
+           characters.value.some(item => item.id === id) ||
+           cards.value.some(item => item.id === id)
+  }
 
   // Load data from localStorage on initialization
   function loadFromLocalStorage() {
@@ -147,7 +177,7 @@ export const useGreetingsStore = defineStore('greetings', () => {
   // Actions
   function addGreeting(greeting) {
     const newGreeting = {
-      id: crypto.randomUUID(),
+      id: generateUniqueUUID(idExists),
       name: greeting.name || 'Untitled',
       canon: greeting.canon || false,
       au: greeting.au || false,
@@ -324,7 +354,7 @@ export const useGreetingsStore = defineStore('greetings', () => {
     }
 
     const newCharacter = {
-      id: crypto.randomUUID(),
+      id: generateUniqueUUID(idExists),
       name: name.trim()
     }
     characters.value.push(newCharacter)
@@ -350,7 +380,7 @@ export const useGreetingsStore = defineStore('greetings', () => {
     }
 
     const newCard = {
-      id: crypto.randomUUID(),
+      id: generateUniqueUUID(idExists),
       name: name.trim(),
       url: url.trim()
     }
